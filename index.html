@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Feliz Primavera Micol</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #1b2612;
+    font-family: 'Poppins', system-ui, sans-serif;
+  }
+  #field-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .hint-badge {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(18, 30, 10, 0.55);
+    color: #fff8dc;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    padding: 6px 16px;
+    border-radius: 9999px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    pointer-events: none;
+    opacity: 0.85;
+    transition: opacity 0.8s ease;
+    z-index: 30;
+  }
+  .ui-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 20;
+    display: flex;
+    gap: 12px;
+  }
+  .glass-btn {
+    appearance: none;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    background: rgba(30, 45, 15, 0.45);
+    color: #fffdf5;
+    padding: 10px 20px;
+    border-radius: 9999px;
+    font-family: 'Poppins', sans-serif;
+    font-size: 0.86rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 220ms ease;
+  }
+  .glass-btn:hover {
+    background: rgba(230, 160, 40, 0.88);
+    color: #2b1704;
+    border-color: rgba(255, 255, 255, 0.85);
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px -2px rgba(210, 130, 10, 0.45);
+  }
+  .glass-btn:active {
+    transform: translateY(0);
+  }
+  .glass-btn svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+  }
+</style>
+</head>
+<body>
+
+<div id="field-container">
+  <canvas id="field"></canvas>
+  <div class="hint-badge" id="hint">Toca la pantalla para florecer 🌸</div>
+  <div class="ui-container">
+    <button id="descargar" class="glass-btn" aria-label="Descargar imagen en alta resolución">
+      <svg viewBox="0 0 24 24">
+        <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/>
+      </svg>
+      <span>Descargar postal</span>
+    </button>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  var canvas = document.getElementById('field');
+  var ctx = canvas.getContext('2d');
+
+  var bgCanvas = document.createElement('canvas');
+  var bgCtx = bgCanvas.getContext('2d');
+  var textCanvas = document.createElement('canvas');
+  var textCtx = textCanvas.getContext('2d');
+
+  var W = 0, H = 0, DPR = 1;
+  var isReady = false;
+  var fieldFlowers = [];
+  var pollen = [];
+  var butterflies = [];
+  var petals = [];
+  var bursts = [];
+  var maskData = null;
+  var maskBounds = null;
+  var textLayout = null;
+
+  var startTime = performance.now();
+  var loadTime = performance.now();
+  var lastFrameTime = performance.now();
+
+  function rand(min, max) { return min + Math.random() * (max - min); }
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  function easeOutBack(t) {
+    var c1 = 1.6;
+    var c3 = c1 + 1;
+    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+  }
+
+  var FLOWER_PALETTES = [
+    { name: 'gold', petal: '#ffcc24', petalEdge: '#f59e0b', center: '#78350f', centerGlow: '#d97706' },
+    { name: 'warmAmber', petal: '#ffb319', petalEdge: '#d97706', center: '#451a03', centerGlow: '#b45309' },
+    { name: 'daisyWhite', petal: '#ffffff', petalEdge: '#fef3c7', center: '#f59e0b', centerGlow: '#fbbf24' },
+    { name: 'springPeach', petal: '#fff1f2', petalEdge: '#fca5a5', center: '#991b1b', centerGlow: '#e11d48' },
+    { name: 'brightYellow', petal: '#fef08a', petalEdge: '#facc15', center: '#854d0e', centerGlow: '#ca8a04' }
+  ];
+
+  var SPRITE_RESOLUTIONS = [12, 22, 34, 48];
+  var spriteSheet = {};
+
+  function generateFlowerSprites() {
+    spriteSheet = {};
+    FLOWER_PALETTES.forEach(function(pal, palIdx){
+      spriteSheet[palIdx] = [];
+      SPRITE_RESOLUTIONS.forEach(function(res){
+        var c = document.createElement('canvas');
+        var rHalf = res;
+        c.width = res * 2;
+        c.height = res * 2;
+        var sctx = c.getContext('2d');
+
+        sctx.translate(rHalf, rHalf);
+
+        // Pétalos redondeados estilizados
+        var numPetals = 6;
+        for (var i = 0; i < numPetals; i++){
+          sctx.save();
+          sctx.rotate((i * (360 / numPetals)) * Math.PI / 180);
+
+          var petalLen = rHalf * 0.84;
+          var petalWidth = rHalf * 0.44;
+
+          var grad = sctx.createRadialGradient(0, -petalLen * 0.5, petalWidth * 0.2, 0, -petalLen * 0.6, petalLen);
+          grad.addColorStop(0, pal.petal);
+          grad.addColorStop(1, pal.petalEdge);
+
+          sctx.fillStyle = grad;
+          sctx.beginPath();
+          sctx.ellipse(0, -petalLen * 0.6, petalWidth * 0.6, petalLen * 0.6, 0, 0, Math.PI * 2);
+          sctx.fill();
+          sctx.restore();
+        }
+
+        // Centro floral
+        var centerR = rHalf * 0.32;
+        var cGrad = sctx.createRadialGradient(0, 0, 1, 0, 0, centerR);
+        cGrad.addColorStop(0, pal.centerGlow);
+        cGrad.addColorStop(1, pal.center);
+        sctx.fillStyle = cGrad;
+        sctx.beginPath();
+        sctx.arc(0, 0, centerR, 0, Math.PI * 2);
+        sctx.fill();
+
+        // Anillo de polen sutil
+        sctx.fillStyle = 'rgba(255,255,235,0.7)';
+        for(var d = 0; d < 6; d++){
+          var ang = (d / 6) * Math.PI * 2;
+          sctx.beginPath();
+          sctx.arc(Math.cos(ang) * centerR * 0.58, Math.sin(ang) * centerR * 0.58, centerR * 0.14, 0, Math.PI * 2);
+          sctx.fill();
+        }
+
+        spriteSheet[palIdx].push({
+          canvas: c,
+          baseSize: res
+        });
+      });
+    });
+  }
+
+  function buildMaskAndText() {
+    if (!W || !H || W <= 0 || H <= 0) return;
+
+    textCanvas.width = W;
+    textCanvas.height = H;
+    textCtx.clearRect(0, 0, W, H);
+
+    var isNarrow = W < 640;
+    var primary = 'Micol';
+    var secondary = isNarrow ? ['Feliz', 'Primavera'] : ['Feliz Primavera'];
+    var primaryFont = '"Playfair Display", Georgia, serif';
+    var secondaryFont = '"Poppins", sans-serif';
+
+    var maxContentW = W * (isNarrow ? 0.88 : 0.80);
+    var horizon = H * (isNarrow ? 0.16 : 0.22);
+    var usableH = Math.max(80, H - horizon);
+
+    var primarySize = Math.round(Math.min(W * 0.24, usableH * 0.24));
+    textCtx.font = '900 ' + primarySize + 'px ' + primaryFont;
+    var pW = textCtx.measureText(primary).width;
+    if (pW > maxContentW && pW > 0) {
+      primarySize = Math.max(20, Math.round(primarySize * (maxContentW / pW)));
+    }
+
+    var secondarySize = Math.round(primarySize * 0.38);
+    textCtx.font = '800 ' + secondarySize + 'px ' + secondaryFont;
+    var secWidths = secondary.map(function(l){ return textCtx.measureText(l).width; });
+    var maxSecW = Math.max.apply(null, secWidths);
+    if (maxSecW > maxContentW && maxSecW > 0) {
+      secondarySize = Math.max(14, Math.round(secondarySize * (maxContentW / maxSecW)));
+    }
+
+    var secSpacing = Math.round(secondarySize * 1.18);
+    var titleGap = Math.round(primarySize * 0.20);
+    var totalTextHeight = secondary.length * secSpacing + titleGap + primarySize;
+
+    var startY = horizon + Math.max(10, (usableH - totalTextHeight) * 0.40);
+
+    textLayout = {
+      primary: primary,
+      secondary: secondary,
+      primarySize: primarySize,
+      secondarySize: secondarySize,
+      secSpacing: secSpacing,
+      startY: startY,
+      primaryFont: primaryFont,
+      secondaryFont: secondaryFont,
+      primaryY: startY + secondary.length * secSpacing + titleGap + primarySize * 0.72
+    };
+
+    textCtx.textAlign = 'center';
+    textCtx.textBaseline = 'alphabetic';
+    textCtx.fillStyle = '#000000';
+
+    textCtx.font = '800 ' + secondarySize + 'px ' + secondaryFont;
+    secondary.forEach(function(line, idx){
+      textCtx.fillText(line, W / 2, startY + (idx + 0.8) * secSpacing);
+    });
+
+    textCtx.font = '900 ' + primarySize + 'px ' + primaryFont;
+    textCtx.fillText(primary, W / 2, textLayout.primaryY);
+
+    try {
+      maskData = textCtx.getImageData(0, 0, W, H).data;
+      maskBounds = computeMaskBounds();
+    } catch(err) {
+      maskData = null;
+      maskBounds = null;
+    }
+  }
+
+  function computeMaskBounds() {
+    if (!maskData) return null;
+    var minX = W, maxX = 0, minY = H, maxY = 0, hasPixels = false;
+    var stride = 4;
+    for (var y = 0; y < H; y += stride){
+      for (var x = 0; x < W; x += stride){
+        if (maskData[(y * W + x) * 4 + 3] > 40){
+          hasPixels = true;
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    return hasPixels ? { 
+      cx: (minX + maxX) / 2, 
+      cy: (minY + maxY) / 2, 
+      w: maxX - minX, 
+      h: maxY - minY, 
+      minX: minX, 
+      maxX: maxX, 
+      minY: minY, 
+      maxY: maxY 
+    } : null;
+  }
+
+  function sampleMask(x, y) {
+    if (!maskData || W <= 0 || H <= 0) return 0;
+    var xi = Math.round(x);
+    var yi = Math.round(y);
+    if (xi < 0 || yi < 0 || xi >= W || yi >= H) return 0;
+    return maskData[(yi * W + xi) * 4 + 3] / 255;
+  }
+
+  function buildBackground() {
+    if (!W || !H || W <= 0 || H <= 0) return;
+
+    bgCanvas.width = W;
+    bgCanvas.height = H;
+    var horizon = H * (W < 640 ? 0.16 : 0.22);
+
+    // Cielo primaveral amanecer
+    var sky = bgCtx.createLinearGradient(0, 0, 0, horizon * 1.3);
+    sky.addColorStop(0, '#f9dfcb');
+    sky.addColorStop(0.5, '#fedbb2');
+    sky.addColorStop(1, '#ffefcd');
+    bgCtx.fillStyle = sky;
+    bgCtx.fillRect(0, 0, W, horizon * 1.3);
+
+    // Sol con halo suave
+    var sunX = W * 0.82;
+    var sunY = horizon * 0.45;
+    var sunGrad = bgCtx.createRadialGradient(sunX, sunY, 3, sunX, sunY, horizon * 1.8);
+    sunGrad.addColorStop(0, 'rgba(255, 255, 228, 0.95)');
+    sunGrad.addColorStop(0.35, 'rgba(255, 226, 155, 0.4)');
+    sunGrad.addColorStop(1, 'rgba(255, 226, 155, 0)');
+    bgCtx.fillStyle = sunGrad;
+    bgCtx.fillRect(0, 0, W, horizon * 2);
+
+    bgCtx.beginPath();
+    bgCtx.fillStyle = '#fffdf0';
+    bgCtx.arc(sunX, sunY, Math.max(18, W * 0.022), 0, Math.PI * 2);
+    bgCtx.fill();
+
+    // Colinas distantes
+    bgCtx.fillStyle = 'rgba(102, 142, 114, 0.42)';
+    bgCtx.beginPath();
+    bgCtx.moveTo(0, horizon + 12);
+    bgCtx.bezierCurveTo(W * 0.25, horizon - 20, W * 0.45, horizon + 15, W * 0.65, horizon - 4);
+    bgCtx.bezierCurveTo(W * 0.85, horizon - 24, W * 0.95, horizon + 6, W, horizon - 2);
+    bgCtx.lineTo(W, horizon + 45);
+    bgCtx.lineTo(0, horizon + 45);
+    bgCtx.closePath();
+    bgCtx.fill();
+
+    // Campo de hierba con gradiente rico
+    var grass = bgCtx.createLinearGradient(0, horizon, 0, H);
+    grass.addColorStop(0, '#c7da63');
+    grass.addColorStop(0.22, '#93c448');
+    grass.addColorStop(0.65, '#4a8527');
+    grass.addColorStop(1, '#204414');
+    bgCtx.fillStyle = grass;
+    bgCtx.fillRect(0, horizon, W, H - horizon);
+
+    // Briznas de hierba
+    var bladeCount = Math.round((W * (H - horizon)) / 850);
+    bgCtx.strokeStyle = 'rgba(38, 70, 22, 0.2)';
+    bgCtx.lineWidth = 1.1;
+    for (var i = 0; i < bladeCount; i++){
+      var bx = rand(0, W);
+      var by = rand(horizon + 5, H - 2);
+      var bh = rand(4, 12);
+      bgCtx.beginPath();
+      bgCtx.moveTo(bx, by);
+      bgCtx.quadraticCurveTo(bx + rand(-3, 3), by - bh * 0.5, bx + rand(-2, 2), by - bh);
+      bgCtx.stroke();
+    }
+
+    // Viñeta artística suave
+    var vignette = bgCtx.createRadialGradient(W * 0.5, H * 0.52, H * 0.36, W * 0.5, H * 0.52, H * 0.96);
+    vignette.addColorStop(0, 'rgba(0,0,0,0)');
+    vignette.addColorStop(1, 'rgba(10, 24, 6, 0.3)');
+    bgCtx.fillStyle = vignette;
+    bgCtx.fillRect(0, 0, W, H);
+  }
+
+  function buildSceneEntities() {
+    fieldFlowers = [];
+    pollen = [];
+    petals = [];
+    butterflies = [];
+
+    if (!W || !H || W <= 0 || H <= 0) return;
+
+    var horizon = H * (W < 640 ? 0.16 : 0.22);
+    var gridStep = Math.max(9, Math.round(Math.min(W, H) / 90));
+
+    // Flores en el suelo
+    for (var y = horizon + gridStep * 0.7; y < H + 12; y += gridStep) {
+      var depth = clamp((y - horizon) / (H - horizon), 0, 1);
+      var scale = 0.45 + Math.pow(depth, 1.4) * 1.5;
+
+      for (var x = gridStep * 0.5; x < W; x += gridStep) {
+        var jx = x + rand(-gridStep * 0.4, gridStep * 0.4);
+        var jy = y + rand(-gridStep * 0.4, gridStep * 0.4);
+
+        // Despejar el texto para máxima legibilidad
+        var alphaMask = sampleMask(jx, jy);
+        if (alphaMask > 0.08) {
+          if (Math.random() > 0.06) continue;
+        }
+
+        if (Math.random() < 0.1) continue;
+
+        var palIdx = Math.floor(rand(0, FLOWER_PALETTES.length));
+        var baseRadius = rand(3.8, 7.6) * scale;
+
+        var spriteBucket = spriteSheet[palIdx] || [];
+        var chosenSprite = spriteBucket[0];
+        for (var s = 0; s < spriteBucket.length; s++){
+          if (baseRadius * DPR >= spriteBucket[s].baseSize * 0.65) {
+            chosenSprite = spriteBucket[s];
+          }
+        }
+
+        if (chosenSprite) {
+          fieldFlowers.push({
+            x: jx,
+            y: jy,
+            targetRadius: baseRadius,
+            sprite: chosenSprite.canvas,
+            spriteBase: chosenSprite.baseSize,
+            swayOffset: rand(0, Math.PI * 2),
+            swaySpeed: rand(0.8, 1.8),
+            swayAmp: rand(0.04, 0.12),
+            alpha: rand(0.88, 1.0) * (alphaMask > 0 ? 0.35 : 1),
+            bornDelay: depth * 550 + rand(0, 750)
+          });
+        }
+      }
+    }
+
+    // Polen flotante dorado
+    var pollenCount = Math.round(Math.min(W, 850) / 16);
+    for (var p = 0; p < pollenCount; p++) {
+      pollen.push({
+        x: rand(0, W),
+        y: rand(horizon, H),
+        r: rand(0.8, 2.2),
+        vy: rand(8, 22),
+        phase: rand(0, Math.PI * 2),
+        alpha: rand(0.35, 0.85)
+      });
+    }
+
+    // Pétalos arrastrados por la brisa
+    var petalCount = Math.round(W < 640 ? 10 : 18);
+    for (var pt = 0; pt < petalCount; pt++) {
+      petals.push({
+        x: rand(0, W),
+        y: rand(0, H),
+        size: rand(3.5, 6.2),
+        rot: rand(0, Math.PI * 2),
+        rotSpeed: rand(-1.5, 1.5),
+        speedX: rand(18, 50),
+        speedY: rand(10, 32),
+        phase: rand(0, Math.PI * 2),
+        color: Math.random() > 0.4 ? '#fffbeb' : '#fed7aa'
+      });
+    }
+
+    // Mariposas interactivas
+    var butterflyCount = W < 640 ? 2 : 4;
+    var bColors = ['#f43f5e', '#38bdf8', '#fbbf24', '#c084fc'];
+    for (var b = 0; b < butterflyCount; b++) {
+      butterflies.push({
+        x: rand(W * 0.15, W * 0.85),
+        y: rand(horizon + 40, H * 0.85),
+        targetX: rand(W * 0.1, W * 0.9),
+        targetY: rand(horizon + 20, H * 0.8),
+        size: rand(5, 8),
+        color: bColors[b % bColors.length],
+        wingPhase: rand(0, Math.PI * 2),
+        speed: rand(30, 60),
+        pauseTimer: 0
+      });
+    }
+  }
+
+  function drawArtisticText(time) {
+    if (!textLayout) return;
+
+    var pulse = 0.96 + Math.sin(time * 1.5) * 0.04;
+    var L = textLayout;
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+
+    // 1. Resplandor cálido perimetral para separar nítidamente las letras de las flores
+    if (maskBounds) {
+      var glowRadius = Math.max(maskBounds.w, maskBounds.h) * 0.58;
+      var bgGlow = ctx.createRadialGradient(maskBounds.cx, maskBounds.cy, 10, maskBounds.cx, maskBounds.cy, glowRadius);
+      bgGlow.addColorStop(0, 'rgba(255, 248, 220, 0.45)');
+      bgGlow.addColorStop(0.48, 'rgba(255, 235, 170, 0.22)');
+      bgGlow.addColorStop(1, 'rgba(255, 230, 150, 0)');
+      ctx.fillStyle = bgGlow;
+      ctx.beginPath();
+      ctx.arc(maskBounds.cx, maskBounds.cy, glowRadius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 2. Líneas secundarias: "Feliz Primavera"
+    ctx.font = '800 ' + L.secondarySize + 'px ' + L.secondaryFont;
+    L.secondary.forEach(function(line, idx){
+      var lineY = L.startY + (idx + 0.8) * L.secSpacing;
+
+      // Sombra oscura profunda
+      ctx.fillStyle = 'rgba(12, 24, 6, 0.75)';
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+      ctx.shadowBlur = 12;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 4;
+      ctx.fillText(line, W / 2, lineY + 2);
+
+      // Trazo protector oscuro
+      ctx.lineWidth = Math.max(2.5, L.secondarySize * 0.08);
+      ctx.strokeStyle = 'rgba(22, 45, 10, 0.85)';
+      ctx.strokeText(line, W / 2, lineY);
+
+      // Relleno nítido blanco marfil
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#fffdf2';
+      ctx.fillText(line, W / 2, lineY);
+    });
+
+    // 3. Nombre protagonista: "Micol" con relieve dorado
+    ctx.font = '900 ' + L.primarySize + 'px ' + L.primaryFont;
+
+    // Sombra de fondo
+    ctx.fillStyle = 'rgba(8, 20, 4, 0.85)';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+    ctx.shadowBlur = 20;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 6;
+    ctx.fillText(L.primary, W / 2, L.primaryY + 3);
+
+    // Contorno oscuro anti-ruido visual
+    ctx.lineWidth = Math.max(4, L.primarySize * 0.09);
+    ctx.strokeStyle = 'rgba(24, 48, 12, 0.95)';
+    ctx.strokeText(L.primary, W / 2, L.primaryY);
+
+    // Gradiente dorado primaveral
+    var textGrad = ctx.createLinearGradient(0, L.primaryY - L.primarySize * 0.72, 0, L.primaryY + 6);
+    textGrad.addColorStop(0, '#ffffff');
+    textGrad.addColorStop(0.42, '#fff4ba');
+    textGrad.addColorStop(0.78, '#fcd34d');
+    textGrad.addColorStop(1, '#f59e0b');
+
+    ctx.shadowBlur = 16 * pulse;
+    ctx.shadowColor = 'rgba(251, 191, 36, 0.85)';
+    ctx.fillStyle = textGrad;
+    ctx.fillText(L.primary, W / 2, L.primaryY);
+
+    // Detalle de luz superior
+    ctx.shadowBlur = 0;
+    ctx.lineWidth = Math.max(1, L.primarySize * 0.018);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.strokeText(L.primary, W / 2, L.primaryY);
+
+    ctx.restore();
+  }
+
+  function updateAndDrawPetals(dt, time) {
+    if (!petals || petals.length === 0) return;
+    for (var i = 0; i < petals.length; i++) {
+      var p = petals[i];
+      p.x += (p.speedX + Math.sin(time * 1.5 + p.phase) * 12) * dt;
+      p.y += (p.speedY + Math.cos(time * 1.2 + p.phase) * 6) * dt;
+      p.rot += p.rotSpeed * dt;
+
+      if (p.x > W + 20) {
+        p.x = -20;
+        p.y = rand(0, H * 0.7);
+      }
+      if (p.y > H + 20) {
+        p.y = -20;
+        p.x = rand(0, W);
+      }
+
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = 0.8;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, p.size * 1.2, p.size * 0.65, Math.PI / 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function updateAndDrawButterflies(dt, time) {
+    if (!butterflies || butterflies.length === 0) return;
+    var horizon = H * (W < 640 ? 0.16 : 0.22);
+
+    for (var i = 0; i < butterflies.length; i++) {
+      var b = butterflies[i];
+
+      if (b.pauseTimer > 0) {
+        b.pauseTimer -= dt;
+      } else {
+        var dx = b.targetX - b.x;
+        var dy = b.targetY - b.y;
+        var dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < 15) {
+          b.targetX = rand(W * 0.1, W * 0.9);
+          b.targetY = rand(horizon + 30, H * 0.85);
+          b.pauseTimer = rand(0.4, 1.6);
+        } else {
+          var moveStep = b.speed * dt;
+          b.x += (dx / dist) * Math.min(moveStep, dist);
+          b.y += (dy / dist) * Math.min(moveStep, dist);
+        }
+      }
+
+      var floatY = Math.sin(time * 3 + b.wingPhase) * 1.2;
+      b.wingPhase += dt * 16;
+      var wingScale = Math.abs(Math.cos(b.wingPhase));
+
+      ctx.save();
+      ctx.translate(b.x, b.y + floatY);
+
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.14)';
+      ctx.beginPath();
+      ctx.ellipse(0, 9, b.size * 0.7, b.size * 0.28, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = b.color;
+      ctx.beginPath();
+      ctx.ellipse(-b.size * 0.5 * wingScale, -b.size * 0.2, b.size * 0.8 * wingScale, b.size * 0.6, -Math.PI / 6, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.ellipse(b.size * 0.5 * wingScale, -b.size * 0.2, b.size * 0.8 * wingScale, b.size * 0.6, Math.PI / 6, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#261b11';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, b.size * 0.18, b.size * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+  }
+
+  function spawnFlowerBurst(clickX, clickY) {
+    var count = Math.round(rand(7, 12));
+    for (var i = 0; i < count; i++) {
+      var angle = rand(0, Math.PI * 2);
+      var spd = rand(45, 120);
+      var pal = FLOWER_PALETTES[Math.floor(rand(0, FLOWER_PALETTES.length))];
+      bursts.push({
+        x: clickX,
+        y: clickY,
+        vx: Math.cos(angle) * spd,
+        vy: Math.sin(angle) * spd - rand(15, 45),
+        color: pal.petal,
+        petalEdge: pal.petalEdge,
+        centerColor: pal.center,
+        r: rand(3.5, 6.5),
+        rot: rand(0, Math.PI * 2),
+        rotSpeed: rand(-4, 4),
+        life: 1.0,
+        decay: rand(0.85, 1.3)
+      });
+    }
+
+    var hint = document.getElementById('hint');
+    if (hint && hint.style.opacity !== '0') {
+      hint.style.opacity = '0';
+    }
+  }
+
+  function updateAndDrawBursts(dt) {
+    if (!bursts || bursts.length === 0) return;
+    for (var i = bursts.length - 1; i >= 0; i--) {
+      var pt = bursts[i];
+      pt.x += pt.vx * dt;
+      pt.y += pt.vy * dt;
+      pt.vy += 70 * dt;
+      pt.rot += pt.rotSpeed * dt;
+      pt.life -= pt.decay * dt;
+
+      if (pt.life <= 0) {
+        bursts.splice(i, 1);
+        continue;
+      }
+
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, pt.life);
+      ctx.translate(pt.x, pt.y);
+      ctx.rotate(pt.rot);
+
+      var scale = pt.life;
+      for (var p = 0; p < 5; p++) {
+        ctx.save();
+        ctx.rotate(p * (Math.PI * 2 / 5));
+        ctx.fillStyle = pt.color;
+        ctx.beginPath();
+        ctx.ellipse(0, -pt.r * 1.1 * scale, pt.r * 0.65 * scale, pt.r * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      ctx.fillStyle = pt.centerColor;
+      ctx.beginPath();
+      ctx.arc(0, 0, pt.r * 0.45 * scale, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+  }
+
+  function frame(currentTime) {
+    if (!isReady || W <= 0 || H <= 0) {
+      requestAnimationFrame(frame);
+      return;
+    }
+
+    var dt = (currentTime - lastFrameTime) * 0.001;
+    if (dt > 0.1) dt = 0.1;
+    lastFrameTime = currentTime;
+
+    var time = (currentTime - startTime) * 0.001;
+    var sinceLoad = currentTime - loadTime;
+
+    ctx.drawImage(bgCanvas, 0, 0, W, H);
+
+    for (var i = 0; i < fieldFlowers.length; i++) {
+      var f = fieldFlowers[i];
+      var growProgress = clamp((sinceLoad - f.bornDelay) / 480, 0, 1);
+      if (growProgress <= 0) continue;
+
+      var growth = easeOutBack(growProgress);
+      var currentR = f.targetRadius * growth;
+      var swayAngle = Math.sin(time * f.swaySpeed + f.swayOffset) * f.swayAmp;
+
+      ctx.save();
+      ctx.globalAlpha = f.alpha;
+      ctx.translate(f.x, f.y);
+      ctx.rotate(swayAngle);
+
+      var drawScale = currentR / f.spriteBase;
+      var destW = f.sprite.width * drawScale;
+      var destH = f.sprite.height * drawScale;
+      ctx.drawImage(f.sprite, -destW * 0.5, -destH * 0.5, destW, destH);
+
+      ctx.restore();
+    }
+
+    drawArtisticText(time);
+
+    ctx.save();
+    ctx.fillStyle = '#fffadb';
+    ctx.beginPath();
+    for (var k = 0; k < pollen.length; k++) {
+      var pol = pollen[k];
+      pol.y -= pol.vy * dt;
+      if (pol.y < H * 0.16) {
+        pol.y = H + rand(5, 20);
+        pol.x = rand(0, W);
+      }
+      var drift = Math.sin(time * 1.2 + pol.phase) * 8;
+      var px = pol.x + drift;
+      var py = pol.y;
+
+      ctx.moveTo(px + pol.r, py);
+      ctx.arc(px, py, pol.r, 0, Math.PI * 2);
+    }
+    ctx.fill();
+    ctx.restore();
+
+    updateAndDrawPetals(dt, time);
+    updateAndDrawButterflies(dt, time);
+    updateAndDrawBursts(dt);
+
+    requestAnimationFrame(frame);
+  }
+
+  function resize() {
+    var rawW = window.innerWidth || document.documentElement.clientWidth || 0;
+    var rawH = window.innerHeight || document.documentElement.clientHeight || 0;
+
+    if (rawW <= 0 || rawH <= 0) {
+      setTimeout(resize, 40);
+      return;
+    }
+
+    W = Math.floor(rawW);
+    H = Math.floor(rawH);
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    generateFlowerSprites();
+    buildMaskAndText();
+    buildBackground();
+    buildSceneEntities();
+
+    isReady = true;
+  }
+
+  var resizeTimeout;
+  window.addEventListener('resize', function(){
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(resize, 150);
+  });
+
+  canvas.addEventListener('pointerdown', function(e){
+    var rect = canvas.getBoundingClientRect();
+    var clickX = e.clientX - rect.left;
+    var clickY = e.clientY - rect.top;
+    spawnFlowerBurst(clickX, clickY);
+  });
+
+  document.getElementById('descargar').addEventListener('click', function(e){
+    e.stopPropagation();
+    if (!canvas.width || !canvas.height) return;
+    var exportCanvas = document.createElement('canvas');
+    exportCanvas.width = canvas.width;
+    exportCanvas.height = canvas.height;
+    var expCtx = exportCanvas.getContext('2d');
+    expCtx.drawImage(canvas, 0, 0);
+
+    var link = document.createElement('a');
+    link.download = 'feliz-primavera-micol.png';
+    link.href = exportCanvas.toDataURL('image/png', 1.0);
+    link.click();
+  });
+
+  // Inicio seguro
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function(){
+      resize();
+    });
+  } else {
+    resize();
+  }
+
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function() {
+      resize();
+      loadTime = performance.now();
+    });
+  }
+
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>
